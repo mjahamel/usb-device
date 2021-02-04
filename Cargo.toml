@@ -13,6 +13,9 @@ repository = "https://github.com/mvirkkunen/usb-device"
 libusb = "0.3.0"
 rand = "0.6.1"
 
+[dependencies]
+embedded-dma = "0.1.2"
+
 [features]
 # Use a 256 byte buffer for control transfers instead of 128.
 control-buffer-256 = []
