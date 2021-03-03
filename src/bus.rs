@@ -81,6 +81,9 @@ pub trait UsbBus: Sync + Sized {
     /// Consumes DMA ReadBuffer 'buf', prepares it to be sent by next IN transaction
     fn start_write_dma<T: ReadBuffer>(&self, ep_addr: EndpointAddress, buf: T, size_bytes: usize) -> Result<()>;
 
+    /// Returns true when there is not data waiting for the host to read out from the specified endpoint.
+    fn can_write(&self, ep_addr: EndpointAddress) -> bool;
+
     /// Reads a single packet of data from the specified endpoint and returns the actual length of
     /// the packet.
     ///

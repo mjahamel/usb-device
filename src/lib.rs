@@ -226,6 +226,10 @@ fn _ensure_sync() {
             Err(UsbError::InvalidEndpoint)
         }
 
+        fn can_write(&self, _ep_addr: EndpointAddress) -> bool {
+            false
+        }
+        
         fn read(&self, _ep_addr: EndpointAddress, _buf: &mut [u8]) -> Result<usize> {
             Err(UsbError::InvalidEndpoint)
         }

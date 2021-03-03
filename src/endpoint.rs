@@ -146,6 +146,11 @@ impl<B: UsbBus> Endpoint<'_, B, In> {
     pub fn start_write_dma<T: ReadBuffer>(&self, buffer: T, size_bytes: usize) -> Result<()> {
         self.bus().start_write_dma(self.address, buffer, size_bytes)
     }
+
+    /// Returns true when there is not data waiting for the host to read out.
+    pub fn can_write(&self) -> bool {
+        self.bus().can_write(self.address)
+    }
 }
 
 impl<B: UsbBus> Endpoint<'_, B, Out> {
