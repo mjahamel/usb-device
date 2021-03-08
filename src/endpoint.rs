@@ -1,10 +1,10 @@
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicPtr, Ordering};
 use core::ptr;
-use embedded_dma::{ReadBuffer};
+use embedded_dma::{ReadBuffer, WriteBuffer};
 
 use crate::{Result, UsbDirection};
-use crate::bus::UsbBus;
+use crate::bus::{UsbBus, UsbReadBuffer};
 
 /// Trait for endpoint type markers.
 pub trait EndpointDirection {
@@ -170,6 +170,14 @@ impl<B: UsbBus> Endpoint<'_, B, Out> {
     ///   fit in `data`. This is generally an error in the class implementation.
     pub fn read(&self, data: &mut [u8]) -> Result<usize> {
         self.bus().read(self.address, data)
+    }
+
+    // TODO the DMA stuff needs to be in a different type endpoint.  If we're using DMA reads, then the regular ones won't work...
+
+    /// Gives the endpoint a buffer to write the next received data in to, returns previous one if data has been received
+    // In the initial setup case, returns a ReadBuffer with size 0.
+    pub fn swap_read_dma<T: WriteBuffer>(&self, buffer: T) -> Result<(UsbReadBuffer, usize)> {
+        self.bus().swap_read_dma(self.address, buffer)
     }
 }
 

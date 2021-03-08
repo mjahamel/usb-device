@@ -193,9 +193,9 @@ pub mod class_prelude {
 }
 
 fn _ensure_sync() {
-    use crate::bus::{UsbBus, UsbBusAllocator, PollResult};
+    use crate::bus::{UsbBus, UsbBusAllocator, UsbReadBuffer, PollResult};
     use crate::class_prelude::*;
-    use embedded_dma::{ReadBuffer};
+    use embedded_dma::{ReadBuffer, WriteBuffer};
 
     struct DummyBus<'a> {
         a: &'a str,
@@ -223,6 +223,10 @@ fn _ensure_sync() {
         }
 
         fn start_write_dma<T: ReadBuffer>(&self, _ep_addr: EndpointAddress, _buf: T, _size_bytes: usize) -> Result<()> {
+            Err(UsbError::InvalidEndpoint)
+        }
+
+        fn swap_read_dma<T: WriteBuffer>(&self, ep_addr: EndpointAddress, buffer: T) -> Result<(UsbReadBuffer, usize)> {
             Err(UsbError::InvalidEndpoint)
         }
 
