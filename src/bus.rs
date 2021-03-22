@@ -1,12 +1,12 @@
 use crate::endpoint::{
     DmaBuffer, Endpoint, EndpointAddress, EndpointBuffer, EndpointDirection, EndpointType,
-    StaticBuffer,
+    IsochronousSynchronizationType, IsochronousUsageType, StaticBuffer,
 };
 use crate::{Result, UsbDirection, UsbError};
 use core::cell::RefCell;
-use core::sync::atomic::{AtomicPtr, Ordering};
 use core::mem;
 use core::ptr;
+use core::sync::atomic::{AtomicPtr, Ordering};
 use embedded_dma::{ReadBuffer, WriteBuffer};
 
 /// A trait for device-specific USB peripherals. Implement this to add support for a new hardware
@@ -45,7 +45,8 @@ pub trait UsbBus: Sync + Sized {
         ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
-        interval: u8) -> Result<EndpointAddress>;
+        interval: u8,
+    ) -> Result<EndpointAddress>;
 
     /// Enables and initializes the USB peripheral. Soon after enabling the device will be reset, so
     /// there is no need to perform a USB reset in this method.
@@ -259,6 +260,37 @@ impl<B: UsbBus> UsbBusAllocator<B> {
             .expect("alloc_ep failed")
     }
 
+    /// Allocates an isochronous endpoint.
+    ///
+    /// # Arguments
+    ///
+    /// * `synchronization` - Type of synchronization used by the endpoint
+    /// * `usage` - Whether the endpoint is data, explicit feedback, or data+implicit feedback
+    /// * `payload_size` - Payload size in bytes.
+    /// * `interval` - Interval for polling, expressed in frames/microframes.  Must be 1 to 16,
+    ///    calculated as 2^(interval-1), see USB 2.0 section 9.6.6.
+    ///
+    /// # Panics
+    ///
+    /// Panics if endpoint allocation fails, because running out of endpoints or memory is not
+    /// feasibly recoverable.
+    #[inline]
+    pub fn isochronous<D: EndpointDirection, M: EndpointBuffer>(
+        &self,
+        synchronization: IsochronousSynchronizationType,
+        usage: IsochronousUsageType,
+        payload_size: u16,
+        interval: u8,
+    ) -> Endpoint<'_, B, D, M> {
+        self.alloc(
+            None,
+            EndpointType::Isochronous((synchronization, usage)),
+            payload_size,
+            interval,
+        )
+        .expect("alloc_ep failed")
+    }
+
     /// Allocates a bulk endpoint.
     ///
     /// # Arguments
@@ -281,6 +313,7 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     /// Allocates an interrupt endpoint.
     ///
     /// * `max_packet_size` - Maximum packet size in bytes. Cannot exceed 64 bytes.
+    /// * `interval` - Polling interval.
     ///
     /// # Panics
     ///

@@ -257,7 +257,7 @@ impl DescriptorWriter<'_> {
             descriptor_type::ENDPOINT,
             &[
                 endpoint.address().into(), // bEndpointAddress
-                endpoint.ep_type() as u8, // bmAttributes
+                endpoint.ep_type().to_bm_attributes(), // bmAttributes
                 mps as u8, (mps >> 8) as u8, // wMaxPacketSize
                 endpoint.interval(), // bInterval
             ])?;
