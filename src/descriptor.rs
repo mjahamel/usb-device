@@ -1,7 +1,7 @@
 use crate::{Result, UsbError};
 use crate::bus::{UsbBus, InterfaceNumber, StringIndex};
 use crate::device;
-use crate::endpoint::{Endpoint, EndpointDirection};
+use crate::endpoint::{Endpoint, EndpointBuffer, EndpointDirection};
 
 /// Standard descriptor types
 #[allow(missing_docs)]
@@ -241,8 +241,10 @@ impl DescriptorWriter<'_> {
     ///
     /// * `endpoint` - Endpoint previously allocated with
     ///   [`UsbBusAllocator`](crate::bus::UsbBusAllocator).
-    pub fn endpoint<'e, B: UsbBus, D: EndpointDirection>(&mut self, endpoint: &Endpoint<'e, B, D>)
-        -> Result<()>
+    pub fn endpoint<'e, B: UsbBus, D: EndpointDirection, M: EndpointBuffer>(
+        &mut self,
+        endpoint: &Endpoint<'e, B, D, M>,
+    ) -> Result<()>
     {
         match self.num_endpoints_mark {
             Some(mark) => self.buf[mark] += 1,

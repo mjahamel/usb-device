@@ -26,11 +26,29 @@ impl EndpointDirection for In {
     const DIRECTION: UsbDirection = UsbDirection::In;
 }
 
-/// A host-to-device (OUT) endpoint.
-pub type EndpointOut<'a, B> = Endpoint<'a, B, Out>;
+pub trait EndpointBuffer {}
 
-/// A device-to-host (IN) endpoint.
-pub type EndpointIn<'a, B> = Endpoint<'a, B, In>;
+/// Marker type to indicate that the endpoint has a static read/write buffer
+pub struct StaticBuffer {}
+
+impl EndpointBuffer for StaticBuffer {}
+
+/// Marker type to indicate that the endpoint reads/writes from DMA buffers
+pub struct DmaBuffer {}
+
+impl EndpointBuffer for DmaBuffer {}
+
+/// A host-to-device (OUT) endpoint with a static buffer.
+pub type EndpointOut<'a, B> = Endpoint<'a, B, Out, StaticBuffer>;
+
+/// A device-to-host (IN) endpoint with a static buffer.
+pub type EndpointIn<'a, B> = Endpoint<'a, B, In, StaticBuffer>;
+
+/// A host-to-device (OUT) endpoint using DMA buffers.
+pub type EndpointOutDma<'a, B> = Endpoint<'a, B, Out, DmaBuffer>;
+
+/// A device-to-host (IN) endpoint using DMA buffers.
+pub type EndpointInDma<'a, B> = Endpoint<'a, B, In, DmaBuffer>;
 
 /// USB endpoint transfer type. The values of this enum can be directly cast into `u8` to get the
 /// transfer bmAttributes transfer type bits.
@@ -50,22 +68,22 @@ pub enum EndpointType {
 
 /// Handle for a USB endpoint. The endpoint direction is constrained by the `D` type argument, which
 /// must be either `In` or `Out`.
-pub struct Endpoint<'a, B: UsbBus, D: EndpointDirection> {
+pub struct Endpoint<'a, B: UsbBus, D: EndpointDirection, M: EndpointBuffer> {
     bus_ptr: &'a AtomicPtr<B>,
     address: EndpointAddress,
     ep_type: EndpointType,
     max_packet_size: u16,
     interval: u8,
-    _marker: PhantomData<D>
+    _marker: PhantomData<(D, M)>,
 }
 
-impl<B: UsbBus, D: EndpointDirection> Endpoint<'_, B, D> {
+impl<B: UsbBus, D: EndpointDirection, M: EndpointBuffer> Endpoint<'_, B, D, M> {
     pub(crate) fn new<'a>(
         bus_ptr: &'a AtomicPtr<B>,
         address: EndpointAddress,
         ep_type: EndpointType,
         max_packet_size: u16,
-        interval: u8) -> Endpoint<'_, B, D>
+        interval: u8) -> Endpoint<'_, B, D, M>
     {
         Endpoint {
             bus_ptr,
@@ -109,7 +127,7 @@ impl<B: UsbBus, D: EndpointDirection> Endpoint<'_, B, D> {
     }
 }
 
-impl<B: UsbBus> Endpoint<'_, B, In> {
+impl<B: UsbBus> Endpoint<'_, B, In, StaticBuffer> {
     /// Writes a single packet of data to the specified endpoint and returns number of bytes
     /// actually written. The buffer must not be longer than the `max_packet_size` specified when
     /// allocating the endpoint.
@@ -128,7 +146,9 @@ impl<B: UsbBus> Endpoint<'_, B, In> {
     pub fn write(&self, data: &[u8]) -> Result<usize> {
         self.bus().write(self.address, data)
     }
+}
 
+impl<B: UsbBus> Endpoint<'_, B, In, DmaBuffer> {
     /// Sets up the endpoint to write the data in `buffer` in the next packet.  `buffer` must
     /// remain valid until the packet has been sent.  `buffer` must be 32-bit aligned, and
     /// be at least `size_bytes` long.
@@ -153,7 +173,7 @@ impl<B: UsbBus> Endpoint<'_, B, In> {
     }
 }
 
-impl<B: UsbBus> Endpoint<'_, B, Out> {
+impl<B: UsbBus> Endpoint<'_, B, Out, StaticBuffer> {
     /// Reads a single packet of data from the specified endpoint and returns the actual length of
     /// the packet. The buffer should be large enough to fit at least as many bytes as the
     /// `max_packet_size` specified when allocating the endpoint.
@@ -171,9 +191,9 @@ impl<B: UsbBus> Endpoint<'_, B, Out> {
     pub fn read(&self, data: &mut [u8]) -> Result<usize> {
         self.bus().read(self.address, data)
     }
+}
 
-    // TODO the DMA stuff needs to be in a different type endpoint.  If we're using DMA reads, then the regular ones won't work...
-
+impl<B: UsbBus> Endpoint<'_, B, Out, DmaBuffer> {
     /// Gives the endpoint a buffer to write the next received data in to, returns previous one if data has been received
     // In the initial setup case, returns a ReadBuffer with size 0.
     pub fn swap_read_dma<T: WriteBuffer>(&self, buffer: T) -> Result<(UsbReadBuffer, usize)> {
