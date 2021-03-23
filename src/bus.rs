@@ -30,6 +30,7 @@ pub trait UsbBus: Sync + Sized {
     ///   attempt to return an endpoint with the specified address. If None, the implementation
     ///   should return the next available one.
     /// * `max_packet_size` - Maximum packet size in bytes.
+    /// * `buffer_size` - Size of data buffer to allocate.
     /// * `interval` - Polling interval parameter for interrupt endpoints.
     ///
     /// # Errors
@@ -108,8 +109,12 @@ pub trait UsbBus: Sync + Sized {
     /// Implementations may also return other errors if applicable.
     fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize>;
 
-
-    fn swap_read_dma<T: WriteBuffer>(&self, ep_addr: EndpointAddress, buffer: T) -> Result<(UsbReadBuffer, usize)>;
+    /// Accepts a buffer for the next OUT transfer, returns filled buffer from the previous transfer
+    fn swap_read_dma<T: WriteBuffer>(
+        &self,
+        ep_addr: EndpointAddress,
+        buffer: T,
+    ) -> Result<(UsbReadBuffer, usize)>;
 
     /// Sets or clears the STALL condition for an endpoint. If the endpoint is an OUT endpoint, it
     /// should be prepared to receive data again.
@@ -220,7 +225,7 @@ impl<B: UsbBus> UsbBusAllocator<B> {
         StringIndex(index)
     }
 
-    /// Allocates an endpoint with the specified direction and address.
+    /// Allocates an endpoint with a static data buffer for the specified direction and address.
     ///
     /// This directly delegates to [`UsbBus::alloc_ep`], so see that method for details. In most
     /// cases classes should call the endpoint type specific methods instead.
@@ -335,7 +340,9 @@ impl<B: UsbBus> UsbBusAllocator<B> {
 pub struct InterfaceNumber(u8);
 
 impl From<InterfaceNumber> for u8 {
-    fn from(n: InterfaceNumber) -> u8 { n.0 }
+    fn from(n: InterfaceNumber) -> u8 {
+        n.0
+    }
 }
 
 /// A handle for a USB string descriptor that contains its index.
@@ -349,7 +356,9 @@ impl StringIndex {
 }
 
 impl From<StringIndex> for u8 {
-    fn from(i: StringIndex) -> u8 { i.0 }
+    fn from(i: StringIndex) -> u8 {
+        i.0
+    }
 }
 
 /// Event and incoming packet information returned by [`UsbBus::poll`].
@@ -374,7 +383,7 @@ pub enum PollResult {
 
         /// A SETUP packet has been received. This event should continue to be reported until the
         /// packet is read. The corresponding bit in `ep_out` may also be set but is ignored.
-        ep_setup: u16
+        ep_setup: u16,
     },
 
     /// A USB suspend request has been detected or, in the case of self-powered devices, the device
@@ -388,7 +397,9 @@ pub enum PollResult {
 
 /// Used to return the buffer supplied in a previous call to swap_read_dma()
 pub struct UsbReadBuffer {
+    /// Beginning of the buffer
     pub pointer: *const u8,
+    /// Size of the buffer in bytes
     pub size: usize,
 }
 

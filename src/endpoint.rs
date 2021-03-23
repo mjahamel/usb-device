@@ -6,7 +6,7 @@ use embedded_dma::{ReadBuffer, WriteBuffer};
 use crate::{Result, UsbDirection};
 use crate::bus::{UsbBus, UsbReadBuffer};
 
-/// Trait for endpoint type markers.
+/// Trait for endpoint direction type markers.
 pub trait EndpointDirection {
     /// Direction value of the marker type.
     const DIRECTION: UsbDirection;

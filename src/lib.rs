@@ -226,7 +226,7 @@ fn _ensure_sync() {
             Err(UsbError::InvalidEndpoint)
         }
 
-        fn swap_read_dma<T: WriteBuffer>(&self, ep_addr: EndpointAddress, buffer: T) -> Result<(UsbReadBuffer, usize)> {
+        fn swap_read_dma<T: WriteBuffer>(&self, _ep_addr: EndpointAddress, _buffer: T) -> Result<(UsbReadBuffer, usize)> {
             Err(UsbError::InvalidEndpoint)
         }
 
