@@ -26,17 +26,33 @@ impl EndpointDirection for In {
     const DIRECTION: UsbDirection = UsbDirection::In;
 }
 
-pub trait EndpointBuffer {}
+/// Indicates the type of buffer that an Endpoint works with
+pub enum BufferType {
+    /// Endpoint provides read() and write() methods which work on an owned buffer
+    Static,
+    /// Endpoint does not allocate its own buffer, but operates directly on user-provided ones
+    Dma,
+}
+
+/// Trait for endpoint buffer type markers
+pub trait EndpointBuffer {
+    /// Indicates whether the endpoint has a static or user-provided (DMA) buffer
+    const TYPE: BufferType;
+}
 
 /// Marker type to indicate that the endpoint has a static read/write buffer
 pub struct StaticBuffer {}
 
-impl EndpointBuffer for StaticBuffer {}
+impl EndpointBuffer for StaticBuffer {
+    const TYPE: BufferType = BufferType::Static;
+}
 
 /// Marker type to indicate that the endpoint reads/writes from DMA buffers
 pub struct DmaBuffer {}
 
-impl EndpointBuffer for DmaBuffer {}
+impl EndpointBuffer for DmaBuffer {
+    const TYPE: BufferType = BufferType::Dma;
+}
 
 /// A host-to-device (OUT) endpoint with a static buffer.
 pub type EndpointOut<'a, B> = Endpoint<'a, B, Out, StaticBuffer>;

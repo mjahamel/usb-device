@@ -1,6 +1,6 @@
 use crate::endpoint::{
-    DmaBuffer, Endpoint, EndpointAddress, EndpointBuffer, EndpointDirection, EndpointType,
-    IsochronousSynchronizationType, IsochronousUsageType, StaticBuffer,
+    BufferType, Endpoint, EndpointAddress, EndpointBuffer, EndpointDirection, EndpointType,
+    IsochronousSynchronizationType, IsochronousUsageType,
 };
 use crate::{Result, UsbDirection, UsbError};
 use core::cell::RefCell;
@@ -46,6 +46,7 @@ pub trait UsbBus: Sync + Sized {
         ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
+        buffer_size: u16,
         interval: u8,
     ) -> Result<EndpointAddress>;
 
@@ -84,7 +85,12 @@ pub trait UsbBus: Sync + Sized {
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> Result<usize>;
 
     /// Consumes DMA ReadBuffer 'buf', prepares it to be sent by next IN transaction
-    fn start_write_dma<T: ReadBuffer>(&self, ep_addr: EndpointAddress, buf: T, size_bytes: usize) -> Result<()>;
+    fn start_write_dma<T: ReadBuffer>(
+        &self,
+        ep_addr: EndpointAddress,
+        buf: T,
+        size_bytes: usize,
+    ) -> Result<()>;
 
     /// Returns true when there is not data waiting for the host to read out from the specified endpoint.
     fn can_write(&self, ep_addr: EndpointAddress) -> bool;
@@ -238,7 +244,17 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     ) -> Result<Endpoint<'_, B, D, M>> {
         self.bus
             .borrow_mut()
-            .alloc_ep(D::DIRECTION, ep_addr, ep_type, max_packet_size, interval)
+            .alloc_ep(
+                D::DIRECTION,
+                ep_addr,
+                ep_type,
+                max_packet_size,
+                match M::TYPE {
+                    BufferType::Static => max_packet_size,
+                    BufferType::Dma => 0,
+                },
+                interval,
+            )
             .map(|a| Endpoint::new(&self.bus_ptr, a, ep_type, max_packet_size, interval))
     }
 
