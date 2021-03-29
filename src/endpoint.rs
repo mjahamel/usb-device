@@ -263,6 +263,11 @@ impl<B: UsbBus> Endpoint<'_, B, Out, DmaBuffer> {
     pub fn swap_read_dma<T: WriteBuffer>(&self, buffer: T) -> Result<(UsbReadBuffer, usize)> {
         self.bus().swap_read_dma(self.address, buffer)
     }
+
+    /// Returns the number of bytes ready to be read out
+    pub fn can_read(&self) -> Option<usize> {
+        self.bus().can_read(self.address)
+    }
 }
 
 /// Type-safe endpoint address.

@@ -95,6 +95,9 @@ pub trait UsbBus: Sync + Sized {
     /// Returns true when there is not data waiting for the host to read out from the specified endpoint.
     fn can_write(&self, ep_addr: EndpointAddress) -> bool;
 
+    /// Returns the number of bytes ready to be read out from the specified endpoint
+    fn can_read(&self, ep_addr: EndpointAddress) -> Option<usize>;
+
     /// Reads a single packet of data from the specified endpoint and returns the actual length of
     /// the packet.
     ///

@@ -239,6 +239,10 @@ fn _ensure_sync() {
             Err(UsbError::InvalidEndpoint)
         }
 
+        fn can_read(&self, _ep_addr: EndpointAddress) -> Option<usize> {
+            None
+        }
+
         fn set_stalled(&self, _ep_addr: EndpointAddress, _stalled: bool) { }
         fn is_stalled(&self, _ep_addr: EndpointAddress) -> bool { false }
         fn suspend(&self) { }
