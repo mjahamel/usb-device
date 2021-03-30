@@ -47,10 +47,17 @@ impl EndpointBuffer for StaticBuffer {
     const TYPE: BufferType = BufferType::Static;
 }
 
-/// Marker type to indicate that the endpoint reads/writes from DMA buffers
-pub struct DmaBuffer {}
+/// Marker type for IN endpoints that use user-supplied DMA buffers
+pub struct DmaInBuffer {}
 
-impl EndpointBuffer for DmaBuffer {
+impl EndpointBuffer for DmaInBuffer {
+    const TYPE: BufferType = BufferType::Dma;
+}
+
+/// Marker type for OUT endpoints that use user-supplied DMA buffers
+pub struct DmaOutBuffer {}
+
+impl EndpointBuffer for DmaOutBuffer {
     const TYPE: BufferType = BufferType::Dma;
 }
 
@@ -61,10 +68,10 @@ pub type EndpointOut<'a, B> = Endpoint<'a, B, Out, StaticBuffer>;
 pub type EndpointIn<'a, B> = Endpoint<'a, B, In, StaticBuffer>;
 
 /// A host-to-device (OUT) endpoint using DMA buffers.
-pub type EndpointOutDma<'a, B> = Endpoint<'a, B, Out, DmaBuffer>;
+pub type EndpointOutDma<'a, B> = Endpoint<'a, B, Out, DmaOutBuffer>;
 
 /// A device-to-host (IN) endpoint using DMA buffers.
-pub type EndpointInDma<'a, B> = Endpoint<'a, B, In, DmaBuffer>;
+pub type EndpointInDma<'a, B> = Endpoint<'a, B, In, DmaInBuffer>;
 
 /// Isochronous transfers employ one of three synchronization schemes. See USB 2.0 spec 5.12.4.1.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -212,7 +219,7 @@ impl<B: UsbBus> Endpoint<'_, B, In, StaticBuffer> {
     }
 }
 
-impl<B: UsbBus> Endpoint<'_, B, In, DmaBuffer> {
+impl<B: UsbBus> Endpoint<'_, B, In, DmaInBuffer> {
     /// Sets up the endpoint to write the data in `buffer` in the next packet.  `buffer` must
     /// remain valid until the packet has been sent.  `buffer` must be 32-bit aligned, and
     /// be at least `size_bytes` long.
@@ -257,7 +264,7 @@ impl<B: UsbBus> Endpoint<'_, B, Out, StaticBuffer> {
     }
 }
 
-impl<B: UsbBus> Endpoint<'_, B, Out, DmaBuffer> {
+impl<B: UsbBus> Endpoint<'_, B, Out, DmaOutBuffer> {
     /// Gives the endpoint a buffer to write the next received data in to, returns previous one if data has been received
     // In the initial setup case, returns a ReadBuffer with size 0.
     pub fn swap_read_dma<T: WriteBuffer>(&self, buffer: T) -> Result<(UsbReadBuffer, usize)> {

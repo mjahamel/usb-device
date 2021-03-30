@@ -208,9 +208,29 @@ fn _ensure_sync() {
             _ep_addr: Option<EndpointAddress>,
             _ep_type: EndpointType,
             _max_packet_size: u16,
-            _buffer_size: u16,
             _interval: u8) -> Result<EndpointAddress>
         {
+            Err(UsbError::EndpointOverflow)
+        }
+
+        fn alloc_dma_out_endpoint<Buf: WriteBuffer>(
+            &mut self,
+            _ep_addr: Option<EndpointAddress>,
+            _ep_type: EndpointType,
+            _max_packet_size: u16,
+            _interval: u8,
+            mut _buffer: Buf,
+        ) -> Result<EndpointAddress> {
+            Err(UsbError::EndpointOverflow)
+        }
+    
+        fn alloc_dma_in_endpoint(
+            &mut self,
+            _ep_addr: Option<EndpointAddress>,
+            _ep_type: EndpointType,
+            _max_packet_size: u16,
+            _interval: u8,
+        ) -> Result<EndpointAddress> {
             Err(UsbError::EndpointOverflow)
         }
 

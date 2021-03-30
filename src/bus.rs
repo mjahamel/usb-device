@@ -1,6 +1,6 @@
 use crate::endpoint::{
-    BufferType, Endpoint, EndpointAddress, EndpointBuffer, EndpointDirection, EndpointType,
-    IsochronousSynchronizationType, IsochronousUsageType,
+    self, DmaInBuffer, DmaOutBuffer, Endpoint, EndpointAddress, EndpointDirection,
+    EndpointType, IsochronousSynchronizationType, IsochronousUsageType, StaticBuffer,
 };
 use crate::{Result, UsbDirection, UsbError};
 use core::cell::RefCell;
@@ -29,8 +29,7 @@ pub trait UsbBus: Sync + Sized {
     /// * `ep_addr` - A static endpoint address to allocate. If Some, the implementation should
     ///   attempt to return an endpoint with the specified address. If None, the implementation
     ///   should return the next available one.
-    /// * `max_packet_size` - Maximum packet size in bytes.
-    /// * `buffer_size` - Size of data buffer to allocate.
+    /// * `max_packet_size` - Maximum packet size in bytes, also size of allocated data buffer.
     /// * `interval` - Polling interval parameter for interrupt endpoints.
     ///
     /// # Errors
@@ -46,7 +45,63 @@ pub trait UsbBus: Sync + Sized {
         ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
-        buffer_size: u16,
+        interval: u8,
+    ) -> Result<EndpointAddress>;
+
+    /// Like [`alloc_ep`](UsbBus::alloc_ep), but specificially for OUT endpoints used with DMA
+    /// buffers.  Requires an embedded-dma WriteBuffer be passed in, so that there is somewhere to
+    /// put the first received data.
+    ///
+    /// # Arguments
+    ///
+    /// * `ep_addr` - A static endpoint address to allocate. If Some, the implementation should
+    ///   attempt to return an endpoint with the specified address. If None, the implementation
+    ///   should return the next available one.
+    /// * `max_packet_size` - Maximum packet size in bytes, also size of allocated data buffer.
+    /// * `interval` - Polling interval parameter for interrupt endpoints.
+    /// * `buffer` - An embedded-dma WriteBuffer with size >= max_packet_size.
+    ///
+    /// # Errors
+    ///
+    /// * [`EndpointOverflow`](crate::UsbError::EndpointOverflow) - Available total number of
+    ///   endpoints, endpoints of the specified type, or endpoind packet memory has been exhausted.
+    ///   This is generally caused when a user tries to add too many classes to a composite device.
+    /// * [`InvalidEndpoint`](crate::UsbError::InvalidEndpoint) - A specific `ep_addr` was specified
+    ///   but the endpoint in question has already been allocated.
+    /// * [`BufferOverflow`](crate::UsbError::BufferOverflow) - `buffer` is smaller than
+    ///   `max_packet_size`.
+    fn alloc_dma_out_endpoint<Buf: WriteBuffer>(
+        &mut self,
+        ep_addr: Option<EndpointAddress>,
+        ep_type: EndpointType,
+        max_packet_size: u16,
+        interval: u8,
+        buffer: Buf,
+    ) -> Result<EndpointAddress>;
+
+    /// Like [`alloc_ep`](UsbBus::alloc_ep), but specificially for IN endpoints used with DMA
+    /// buffers.
+    ///
+    /// # Arguments
+    ///
+    /// * `ep_addr` - A static endpoint address to allocate. If Some, the implementation should
+    ///   attempt to return an endpoint with the specified address. If None, the implementation
+    ///   should return the next available one.
+    /// * `max_packet_size` - Maximum packet size in bytes, also size of allocated data buffer.
+    /// * `interval` - Polling interval parameter for interrupt endpoints.
+    ///
+    /// # Errors
+    ///
+    /// * [`EndpointOverflow`](crate::UsbError::EndpointOverflow) - Available total number of
+    ///   endpoints, endpoints of the specified type, or endpoind packet memory has been exhausted.
+    ///   This is generally caused when a user tries to add too many classes to a composite device.
+    /// * [`InvalidEndpoint`](crate::UsbError::InvalidEndpoint) - A specific `ep_addr` was specified
+    ///   but the endpoint in question has already been allocated.
+    fn alloc_dma_in_endpoint(
+        &mut self,
+        ep_addr: Option<EndpointAddress>,
+        ep_type: EndpointType,
+        max_packet_size: u16,
         interval: u8,
     ) -> Result<EndpointAddress>;
 
@@ -234,17 +289,18 @@ impl<B: UsbBus> UsbBusAllocator<B> {
         StringIndex(index)
     }
 
-    /// Allocates an endpoint with a static data buffer for the specified direction and address.
+    // TODO rename to static_endpoint()
+    /// Allocates an endpoint for the specified direction and address.
     ///
     /// This directly delegates to [`UsbBus::alloc_ep`], so see that method for details. In most
     /// cases classes should call the endpoint type specific methods instead.
-    pub fn alloc<'a, D: EndpointDirection, M: EndpointBuffer>(
+    pub fn alloc<'a, D: EndpointDirection>(
         &self,
         ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
         interval: u8,
-    ) -> Result<Endpoint<'_, B, D, M>> {
+    ) -> Result<Endpoint<'_, B, D, StaticBuffer>> {
         self.bus
             .borrow_mut()
             .alloc_ep(
@@ -252,13 +308,64 @@ impl<B: UsbBus> UsbBusAllocator<B> {
                 ep_addr,
                 ep_type,
                 max_packet_size,
-                match M::TYPE {
-                    BufferType::Static => max_packet_size,
-                    BufferType::Dma => 0,
-                },
                 interval,
             )
             .map(|a| Endpoint::new(&self.bus_ptr, a, ep_type, max_packet_size, interval))
+    }
+
+    /// Allocates an OUT direction endpoint of the specified type, which uses DMA buffers
+    ///
+    /// Requires an embedded-dma WriteBuffer be passed in, so that there is somewhere to put the
+    /// first received data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if endpoint allocation fails, because running out of endpoints or memory is not
+    /// feasibly recoverable.
+    pub fn dma_out_endpoint<'a, Buf: WriteBuffer>(
+        &self,
+        ep_addr: Option<EndpointAddress>,
+        ep_type: EndpointType,
+        max_packet_size: u16,
+        interval: u8,
+        buffer: Buf,
+    ) -> Endpoint<'_, B, endpoint::Out, DmaOutBuffer> {
+        self.bus
+            .borrow_mut()
+            .alloc_dma_out_endpoint(
+                ep_addr,
+                ep_type,
+                max_packet_size,
+                interval,
+                buffer,
+            )
+            .map(|a| Endpoint::new(&self.bus_ptr, a, ep_type, max_packet_size, interval))
+            .expect("alloc_dma_out_endpoint() failed")
+    }
+
+    /// Allocates an IN direction endpoint of the specified type, which uses DMA buffers
+    ///
+    /// # Panics
+    ///
+    /// Panics if endpoint allocation fails, because running out of endpoints is not feasibly
+    /// recoverable.
+    pub fn dma_in_endpoint<'a>(
+        &self,
+        ep_addr: Option<EndpointAddress>,
+        ep_type: EndpointType,
+        max_packet_size: u16,
+        interval: u8,
+    ) -> Endpoint<'_, B, endpoint::In, DmaInBuffer> {
+        self.bus
+            .borrow_mut()
+            .alloc_dma_in_endpoint(
+                ep_addr,
+                ep_type,
+                max_packet_size,
+                interval,
+            )
+            .map(|a| Endpoint::new(&self.bus_ptr, a, ep_type, max_packet_size, interval))
+            .expect("alloc_dma_in_endpoint() failed")
     }
 
     /// Allocates a control endpoint.
@@ -276,10 +383,10 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     /// Panics if endpoint allocation fails, because running out of endpoints or memory is not
     /// feasibly recoverable.
     #[inline]
-    pub fn control<D: EndpointDirection, M: EndpointBuffer>(
+    pub fn control<D: EndpointDirection>(
         &self,
         max_packet_size: u16,
-    ) -> Endpoint<'_, B, D, M> {
+    ) -> Endpoint<'_, B, D, StaticBuffer> {
         self.alloc(None, EndpointType::Control, max_packet_size, 0)
             .expect("alloc_ep failed")
     }
@@ -299,13 +406,13 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     /// Panics if endpoint allocation fails, because running out of endpoints or memory is not
     /// feasibly recoverable.
     #[inline]
-    pub fn isochronous<D: EndpointDirection, M: EndpointBuffer>(
+    pub fn isochronous<D: EndpointDirection>(
         &self,
         synchronization: IsochronousSynchronizationType,
         usage: IsochronousUsageType,
         payload_size: u16,
         interval: u8,
-    ) -> Endpoint<'_, B, D, M> {
+    ) -> Endpoint<'_, B, D, StaticBuffer> {
         self.alloc(
             None,
             EndpointType::Isochronous((synchronization, usage)),
@@ -326,10 +433,10 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     /// Panics if endpoint allocation fails, because running out of endpoints or memory is not
     /// feasibly recoverable.
     #[inline]
-    pub fn bulk<D: EndpointDirection, M: EndpointBuffer>(
+    pub fn bulk<D: EndpointDirection>(
         &self,
         max_packet_size: u16,
-    ) -> Endpoint<'_, B, D, M> {
+    ) -> Endpoint<'_, B, D, StaticBuffer> {
         self.alloc(None, EndpointType::Bulk, max_packet_size, 0)
             .expect("alloc_ep failed")
     }
@@ -344,11 +451,11 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     /// Panics if endpoint allocation fails, because running out of endpoints or memory is not
     /// feasibly recoverable.
     #[inline]
-    pub fn interrupt<D: EndpointDirection, M: EndpointBuffer>(
+    pub fn interrupt<D: EndpointDirection>(
         &self,
         max_packet_size: u16,
         interval: u8,
-    ) -> Endpoint<'_, B, D, M> {
+    ) -> Endpoint<'_, B, D, StaticBuffer> {
         self.alloc(None, EndpointType::Interrupt, max_packet_size, interval)
             .expect("alloc_ep failed")
     }
