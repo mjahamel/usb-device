@@ -40,6 +40,8 @@ pub trait EndpointBuffer {
     const TYPE: BufferType;
 }
 
+// TODO just use one type for IN/OUT and Static/DMA, will need method to return size and Option<buffer pointer>
+
 /// Marker type to indicate that the endpoint has a static read/write buffer
 pub struct StaticBuffer {}
 

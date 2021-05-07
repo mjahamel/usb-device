@@ -290,6 +290,7 @@ impl<B: UsbBus> UsbBusAllocator<B> {
     }
 
     // TODO rename to static_endpoint()
+    // TODO restrict the max_packet_size depending on the type of endpoint (and speed?)
     /// Allocates an endpoint for the specified direction and address.
     ///
     /// This directly delegates to [`UsbBus::alloc_ep`], so see that method for details. In most
