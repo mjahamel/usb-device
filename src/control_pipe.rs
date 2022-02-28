@@ -65,23 +65,14 @@ impl<B: UsbBus> ControlPipe<'_, B> {
         self.state = ControlState::Idle;
     }
 
-    pub fn handle_setup<'p>(&'p mut self) -> Option<Request> {
-        let count = match self.ep_out.read(&mut self.buf[..]) {
-            Ok(count) => count,
-            Err(UsbError::WouldBlock) => return None,
-            Err(_) => {
-                self.set_error();
-                return None;
-            }
-        };
-
+    fn do_setup<'p>(&'p mut self, count: usize) -> Option<Request> {
         let req = match Request::parse(&self.buf[0..count]) {
             Ok(req) => req,
             Err(_) => {
                 // Failed to parse SETUP packet
                 self.set_error();
                 return None;
-            },
+            }
         };
 
         // Now that we have properly parsed the setup packet, ensure the end-point is no longer in
@@ -125,6 +116,18 @@ impl<B: UsbBus> ControlPipe<'_, B> {
         return None;
     }
 
+    pub fn handle_setup<'p>(&'p mut self) -> Option<Request> {
+        let count = match self.ep_out.read(&mut self.buf[..]) {
+            Ok(count) => count,
+            Err(UsbError::WouldBlock) => return None,
+            Err(_) => {
+                self.set_error();
+                return None;
+            }
+        };
+        return self.do_setup(count);
+    }
+
     pub fn handle_out<'p>(&'p mut self) -> Option<Request> {
         match self.state {
             ControlState::DataOut(req) => {
@@ -137,7 +140,7 @@ impl<B: UsbBus> ControlPipe<'_, B> {
                         // sends more data than it indicated in the SETUP request)
                         self.set_error();
                         return None;
-                    },
+                    }
                 };
 
                 self.i += count;
@@ -146,18 +149,38 @@ impl<B: UsbBus> ControlPipe<'_, B> {
                     self.state = ControlState::CompleteOut;
                     return Some(req);
                 }
-            },
+            }
             ControlState::StatusOut => {
-                self.ep_out.read(&mut []).ok();
+                // Problem: a SETUP could have completed and this reads and discards it
+
+                // Was:
+                // self.ep_out.read(&mut []).ok();
+
+                // Read into our buffer in case theres something there
+                let count = match self.ep_out.read(&mut self.buf[..]) {
+                    Ok(count) => count,
+                    Err(UsbError::WouldBlock) => return None,
+                    Err(_) => {
+                        // Failed to read or buffer overflow
+                        self.set_error();
+                        return None;
+                    }
+                };
+
+                if count > 0 {
+                    if count == 8 {
+                        return self.do_setup(count);
+                    }
+                }
                 self.state = ControlState::Idle;
-            },
+            }
             _ => {
                 // Discard the packet
                 self.ep_out.read(&mut []).ok();
 
                 // Unexpected OUT packet
                 self.set_error()
-            },
+            }
         }
 
         return None;
@@ -167,7 +190,7 @@ impl<B: UsbBus> ControlPipe<'_, B> {
         match self.state {
             ControlState::DataIn => {
                 self.write_in_chunk();
-            },
+            }
             ControlState::DataInZlp => {
                 if self.ep_in.write(&[]).is_err() {
                     // There isn't much we can do if the write fails, except to wait for another
@@ -176,15 +199,15 @@ impl<B: UsbBus> ControlPipe<'_, B> {
                 }
 
                 self.state = ControlState::DataInLast;
-            },
+            }
             ControlState::DataInLast => {
                 self.ep_out.unstall();
                 self.state = ControlState::StatusOut;
-            },
+            }
             ControlState::StatusIn => {
                 self.state = ControlState::Idle;
                 return true;
-            },
+            }
             _ => {
                 // Unexpected IN packet
                 self.set_error();
@@ -198,7 +221,7 @@ impl<B: UsbBus> ControlPipe<'_, B> {
         let count = min(self.len - self.i, self.ep_in.max_packet_size() as usize);
 
         let buffer = self.static_in_buf.unwrap_or(&self.buf);
-        let count = match self.ep_in.write(&buffer[self.i..(self.i+count)]) {
+        let count = match self.ep_in.write(&buffer[self.i..(self.i + count)]) {
             Ok(c) => c,
             // There isn't much we can do if the write fails, except to wait for another poll or for
             // the host to resend the request.
@@ -220,7 +243,7 @@ impl<B: UsbBus> ControlPipe<'_, B> {
 
     pub fn accept_out(&mut self) -> Result<()> {
         match self.state {
-            ControlState::CompleteOut => {},
+            ControlState::CompleteOut => {}
             _ => return Err(UsbError::InvalidState),
         };
 
